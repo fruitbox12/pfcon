@@ -72,39 +72,28 @@ source ./decorate.sh
 source ./cparse.sh
 
 declare -i STEP=0
-ORCHESTRATOR=swarm
-NAMESPACE=chris
-STORAGE_TYPE=host
+IDRAC="127.0.0.1"
+NAMESPACE="newton-idracs"
 HERE=$(pwd)
 
 print_usage () {
-    echo "Usage: ./deploy.sh [-h] [-O <swarm|kubernetes>] [-N <namespace>] [-T <host|nfs>]
-         [-P <nfsServerIp>] [-S <storeBase>] [up|down]"
+    echo "Usage: ./deploy.sh [-h] [-O <ip|http://127.0.0.1>] [-N <namespace>]"
     exit 1
 }
 
-while getopts ":hO:N:T:P:S:" opt; do
+while getopts ":hO:N:" opt; do
     case $opt in
         h) print_usage
            ;;
-        O) ORCHESTRATOR=$OPTARG
-           if ! [[ "$ORCHESTRATOR" =~ ^(swarm|kubernetes)$ ]]; then
-              echo "Invalid value for option -- O"
+        O) IDRAC=$OPTARG
+           if ! [[ "$IDRAC" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+              echo "Invalid value for IDRAC URL -- O"
               print_usage
            fi
            ;;
         N) NAMESPACE=$OPTARG
            ;;
-        T) STORAGE_TYPE=$OPTARG
-           if ! [[ "$STORAGE_TYPE" =~ ^(host|nfs)$ ]]; then
-              echo "Invalid value for option -- T"
-              print_usage
-           fi
-           ;;
-        P) NFS_SERVER=$OPTARG
-           ;;
-        S) STOREBASE=$OPTARG
-           ;;
+       
         \?) echo "Invalid option -- $OPTARG"
             print_usage
             ;;
@@ -115,24 +104,8 @@ while getopts ":hO:N:T:P:S:" opt; do
 done
 shift $(($OPTIND - 1))
 
-if [[ $STORAGE_TYPE == nfs ]]; then
-    if [[ $ORCHESTRATOR == swarm ]]; then
-        echo -e "Sorry, nfs storage type is not supported for swarm orchestrator yet"  | ./boxes.sh
-        exit 1
-    fi
-    if [ -z ${NFS_SERVER+x} ]; then
-        echo "-P <NFS_SERVER> (the NFS server ip address) must be specified or the shell
-             environment variable NFS_SERVER must be set when using nfs storage type"
-        print_usage
-    fi
-    if [ -z ${STOREBASE+x} ]; then
-        echo "-S <storeBase> must be specified or the shell environment variable STOREBASE
-             must be set when using nfs storage type"
-        print_usage
-    fi
-fi
 
-COMMAND=up
+COMMAND=deploy
 if (( $# == 1 )) ; then
     COMMAND=$1
     if ! [[ "$COMMAND" =~ ^(up|down)$ ]]; then
@@ -142,18 +115,6 @@ if (( $# == 1 )) ; then
 fi
 
 title -d 1 "Setting global exports..."
-    if [[ $STORAGE_TYPE == host ]]; then
-        if [ -z ${STOREBASE+x} ]; then
-            if [[ ! -d CHRIS_REMOTE_FS ]] ; then
-                mkdir CHRIS_REMOTE_FS
-            fi
-            STOREBASE=$HERE/CHRIS_REMOTE_FS
-        else
-            if [[ ! -d $STOREBASE ]] ; then
-                mkdir -p $STOREBASE
-            fi
-        fi
-    fi
     echo -e "ORCHESTRATOR=$ORCHESTRATOR"                          | ./boxes.sh
     echo -e "exporting STORAGE_TYPE=$STORAGE_TYPE"                | ./boxes.sh
     export STORAGE_TYPE=$STORAGE_TYPE
@@ -169,10 +130,10 @@ title -d 1 "Setting global exports..."
     fi
 windowBottom
 
-if [[ "$COMMAND" == 'up' ]]; then
+if [[ "$COMMAND" == 'deploy' ]]; then
 
-    title -d 1 "Starting pfcon containerized prod environment on $ORCHESTRATOR"
-    if [[ $ORCHESTRATOR == swarm ]]; then
+    title -d 1 "Deploying new pods scanning $IDRAC"
+    if [[ $IDRAC == swarm ]]; then
         echo "docker stack deploy -c swarm/prod/docker-compose.yml pfcon_stack"   | ./boxes.sh ${LightCyan}
         docker stack deploy -c swarm/prod/docker-compose.yml pfcon_stack
     elif [[ $ORCHESTRATOR == kubernetes ]]; then
